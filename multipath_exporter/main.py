@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -12,6 +13,8 @@ import time
 
 import prometheus_client as prom
 import semver
+
+from multipath_exporter.web_config import WebConfig
 
 try:
     import Queue as queue
@@ -149,8 +152,11 @@ def log_fatal(msg, *args, **kwargs):
     sys.exit(1)
 
 
-def main():
+def main(command_line_arguments):
+    logging.basicConfig(level=logging.INFO)
     logging.info("Started")
+
+    web_config = WebConfig(command_line_arguments.web_config_file)
 
     if not validate_host():
         raise MultipathdExporterException("Cannot work on this host")
@@ -162,8 +168,9 @@ def main():
 
     update_metrics(main_registry)
 
+    tls_config = web_config.get_tls_config_for_http_server()
     try:
-        prom.start_http_server(listen_port, registry=main_registry)
+        prom.start_http_server(listen_port, registry=main_registry, **tls_config)
     except BaseException:
         log_fatal("Cannot start HTTP server, exiting: ", exc_info=True)
 
@@ -179,6 +186,7 @@ def main():
 
 
 if __name__ == "__main__":
+    parser_args = None
     try:
         parser = argparse.ArgumentParser(description='Multipath LUN metrics exporter')
         parser.add_argument("--log-level", default="info",
@@ -189,8 +197,16 @@ if __name__ == "__main__":
                             help="Timeout for shell calls, float, default 2.0")
         parser.add_argument("--collect-interval", default=60.0,
                             help="Metrics update interval, float, default 60.0")
+        parser.add_argument(
+            "--web.config.file",
+            type=pathlib.Path,
+            dest="web_config_file",
+            help="web configuration. Config file conforms the scheme in "
+                 "https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md#web-configuration"
+                 "Now the config option supports 'client_ca_file', 'cert_file' 'key_file', 'client_auth_type' in "
+                 "section 'tls_server_config'.")
         parser_args = parser.parse_args()
-
+        logging.info(f"multipath exporter configuration: {vars(parser_args)}")
         cmd_timeout = parser_args.cmd_timeout
         collect_interval = parser_args.collect_interval
         listen_port = parser_args.listen_port
@@ -207,4 +223,4 @@ if __name__ == "__main__":
         sys.exit(0)
     except BaseException:
         log_fatal("Cannot init variables, exiting", exc_info=True)
-    main()
+    main(parser_args)

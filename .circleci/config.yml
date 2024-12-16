@@ -15,7 +15,7 @@ jobs:
     steps: &python_test
       - checkout
       - run: sudo pip install -r requirements.txt
-      - run: python -m unittest multipath_exporter_test
+      - run: python -m unittest discover -s multipath_exporter
   test_python_3_6:
     docker:
       - image: circleci/python:3.6
